@@ -1,5 +1,9 @@
 # DeepLearning specialization workshop @ ICRAR
 
+#### Loading ... 
+
+Topics not final, up for discussion
+
 what is softmax, what is the appropriate loss? 
 
 
