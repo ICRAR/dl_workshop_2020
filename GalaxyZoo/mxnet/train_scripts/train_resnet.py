@@ -38,6 +38,12 @@ if opt.causal:
     tname = r'causal'
 flname_write = r'Results/'+ opt.model + r'_' + tname +r'.txt' 
 
+# ================== SAVING best model ==================================
+import datetime, os
+stamp = datetime.datetime.now().strftime('%Y-%m-%d-Time-%H:%M:%S_') 
+flname_save_weights = r'Results/' + stamp + opt.model+ '_best_model.params'
+# =========================================================================
+
 # Decide on cuda: 
 if opt.cuda and mx.util.get_gpu_count():
     ctx = mx.gpu()
@@ -118,6 +124,7 @@ def test(tctx, tnet, tdatagen_dev):
 
 def train(epochs,ctx,flname_write):
 
+    ref_metric = 1000
     with open(flname_write,"w") as f:
         print('epoch','train_mse','val_mse','train_loss',file=f,flush=True)
 
@@ -158,8 +165,10 @@ def train(epochs,ctx,flname_write):
             # print both on screen and in file 
             print('epoch={} train_mse={} val_mse={} train_loss={} time={}'.format(epoch, train_mse, val_mse, train_loss, time.time()-tic))
             print(epoch, train_mse, val_mse, train_loss, file=f,flush=True)
-
-
+            if val_mse < ref_metric:
+                # Save best model parameters, according to minimum val_mse
+                net.save_parameters(flname_save_weights)
+                ref_metric = val_mse.copy()
 
 if __name__=='__main__':
     #print ("Passed first test")
