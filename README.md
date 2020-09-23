@@ -9,6 +9,7 @@ what is softmax, what is the appropriate loss?
 
 *  Introductory talk on stochastic gradient descent as optimization ?
 *  Stochastic Gradient Descent as an alternative to EM algorithm. GMM Example, make GMM very large/high dimensional, to see where EM breaks ?
+*  Lagrange multipliers (constrained optimization) with stochastic  [gradient descent](https://www.khanacademy.org/math/multivariable-calculus/applications-of-multivariable-derivatives/constrained-optimization/a/lagrange-multipliers-single-constraint) 
 *  Introductory talk on MLPs? Plus workthrough example?  MNIST is good here, also a simple isochrone? 
 *  Deep Learning with uncertainty: MLP Gaussian Mixture Models example? 
 *  Introductory talk on ConvNets (1D/2D)

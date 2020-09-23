@@ -118,7 +118,7 @@ loss_fn  = gluon.loss.L1Loss()
 
 # development metric: 
 def test(tctx, tnet, tdatagen_dev):
-    metric = mx.metric.Accuracy()
+    metric = mx.metric.MSE()
     for data in tdatagen_dev:
         #data = gluon.utils.split_and_load(batch[0], ctx_list=ctx, batch_axis=0)
         imgs, labels = data
