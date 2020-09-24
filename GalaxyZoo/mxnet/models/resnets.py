@@ -24,6 +24,8 @@ class ResNet_v2(HybridBlock):
         elif pretrained == True:
             model = gluoncv.model_zoo.get_model(model_name,pretrained=pretrained,ctx=ctx)
             self.features = model.features
+            for param in self.features.collect_params().values():
+                param.grad_req='null'# remove training for features. 
             if causal:
                 self.output = GZooHEAD()
                 self.output.initialize(ctx=ctx)
