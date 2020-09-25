@@ -1,9 +1,12 @@
+import mxnet as mx 
 from mxnet import gluon
 from mxnet.gluon import HybridBlock
 from mxprosthesis.nn.layers.conv2Dnormed import *
 from mxprosthesis.utils.get_norm import *
 from mxprosthesis.nn.layers.attention import *
 
+from mxnet import np as FF
+from mxnet import npx as FFx
 
 class ResizeLayer(HybridBlock):
     """
@@ -19,8 +22,9 @@ class ResizeLayer(HybridBlock):
         self.conv2d = Conv2DNormed(channels=nfilters,kernel_size=3,padding=1, _norm_type=_norm_type, norm_groups = norm_groups, **kwards)
 
 
-    def hybrid_forward(self, F, input):
-        out = F.contrib.BilinearResize2D(input,height=self.height,width=self.width)
+    def forward(self, input):
+        out = mx.contrib.nd.BilinearResize2D(input.as_nd_ndarray(),height=self.height,width=self.width)
+        out = out.as_np_ndarray()
         out = self.conv2d(out)
 
         return out
@@ -33,13 +37,14 @@ class ExpandLayer(HybridBlock):
         self.conv1 = Conv2DNormed(channels=nfilters,kernel_size=3,padding=1,groups=ngroups, _norm_type=_norm_type, norm_groups = norm_groups, **kwards)
         self.conv2 = Conv2DNormed(channels=nfilters,kernel_size=3,padding=1,groups=ngroups,_norm_type=_norm_type, norm_groups = norm_groups,**kwards) 
 
-    def hybrid_forward(self, F, input):
+    def forward(self, input):
 
-        out = F.contrib.BilinearResize2D(input,scale_height=2.,scale_width=2.)
+        out = mx.contrib.nd.BilinearResize2D(input.as_nd_ndarray(),scale_height=2.,scale_width=2.)
+        out = out.as_np_ndarray()
         out = self.conv1(out)
-        out = F.relu(out)
+        out = FFx.relu(out)
         out = self.conv2(out)
-        out = F.relu(out)
+        out = FFx.relu(out)
 
         return out
 
@@ -50,13 +55,14 @@ class ExpandNCombine(HybridBlock):
         self.conv1 = Conv2DNormed(channels=nfilters,kernel_size=3,padding=1,groups=ngroups,_norm_type=_norm_type, norm_groups = norm_groups,**kwards)
         self.conv2 = Conv2DNormed(channels=nfilters,kernel_size=3,padding=1,groups=ngroups,_norm_type=_norm_type, norm_groups = norm_groups,**kwards)  
 
-    def hybrid_forward(self, F, input1, input2):
+    def forward(self, input1, input2):
 
-        out = F.contrib.BilinearResize2D(input1,scale_height=2.,scale_width=2.)
+        out = mx.contrib.nd.BilinearResize2D(input1.as_nd_ndarray(),scale_height=2.,scale_width=2.)
+        out = out.as_np_ndarray()
         out = self.conv1(out)
-        out = F.relu(out)
-        out2 = self.conv2(F.concat(out,input2,dim=1))
-        out2 = F.relu(out2)
+        out = FFx.relu(out)
+        out2 = self.conv2(FF.concatenate([out,input2],axis=1))
+        out2 = FFx.relu(out2)
 
         return out2
 
@@ -90,50 +96,49 @@ class CEEC_unit_v1(HybridBlock):
         self.ratt211 = RelFTAttention2D(nkeys=nfilters_init, nheads=nheads,norm=norm_type, norm_groups = norm_groups,ftdepth=ftdepth)
 
 
-        self.gamma1  = self.params.get('gamma1', shape=(1,), init=mx.init.Zero())
-        self.gamma2  = self.params.get('gamma2', shape=(1,), init=mx.init.Zero())
-        self.gamma3  = self.params.get('gamma3', shape=(1,), init=mx.init.Zero())
+        self.gamma1  = gluon.Parameter('gamma1', shape=(1,), init=mx.init.Zero())
+        self.gamma2  = gluon.Parameter('gamma2', shape=(1,), init=mx.init.Zero())
+        self.gamma3  = gluon.Parameter('gamma3', shape=(1,), init=mx.init.Zero())
 
 
-    def hybrid_forward(self, F, input, gamma1, gamma2, gamma3):
+    def forward(self, input):
         
         # =========== UNet branch ===========
         out10 = self.conv_init_1(input)
         out1 = self.compr11(out10)
-        out1 = F.relu(out1)
+        out1 = FFx.relu(out1)
         out1 = self.compr12(out1)
-        out1 = F.relu(out1)
+        out1 = FFx.relu(out1)
         out1 = self.expand1(out1,out10)
-        out1 = F.relu(out1)
+        out1 = FFx.relu(out1)
 
 
         # =========== \capNet branch ===========
-        input = F.identity(input) # Solves a mxnet bug
 
         out20 = self.conv_init_2(input)
         out2 = self.expand2(out20)
-        out2 = F.relu(out2)
+        out2 = FFx.relu(out2)
         out2 = self.compr21(out2)
-        out2 = F.relu(out2)
-        out2 = self.compr22(F.concat(out2,out20,dim=1))
-        out2 = F.relu(out2)
+        out2 = FFx.relu(out2)
+        out2 = self.compr22(FF.concatenate([out2,out20],axis=1))
+        out2 = FFx.relu(out2)
 
-        att  = F.broadcast_mul(gamma1,self.att(input))
-        ratt122 = F.broadcast_mul(gamma2,self.ratt122(out1,out2,out2))
-        ratt211 = F.broadcast_mul(gamma3,self.ratt211(out2,out1,out1))
+        att  = self.gamma1.data() * self.att(input)
+        ratt122 = self.gamma2.data() * self.ratt122(out1,out2,out2)
+        ratt211 = self.gamma3.data() * self.ratt211(out2,out1,out1)
 
-        ones1 = F.ones_like(out10)
-        ones2 = F.ones_like(input)
+        ones1 = FF.ones_like(out10)
+        ones2 = FF.ones_like(input)
 
         # Enhanced output of 1, based on memory of 2
-        out122 = F.broadcast_mul(out1,ones1 + ratt122)
+        out122 = out1 * (ones1 + ratt122)
         # Enhanced output of 2, based on memory of 1        
-        out211 = F.broadcast_mul(out2,ones1 + ratt211)
+        out211 = out2 * (ones1 + ratt211)
 
-        out12 = F.relu(self.collect(F.concat(out122,out211,dim=1)))
+        out12 = FFx.relu(self.collect(FF.concatenate([out122,out211],axis=1)))
 
         # Emphasize residual output from memory on input 
-        out_res = F.broadcast_mul(input + out12, ones2 + att)
+        out_res = (input + out12) * ( ones2 + att)
         return out_res
 
 
@@ -155,25 +160,24 @@ class Fusion(HybridBlock):
         self.relatt21 = RelFTAttention2D(nkeys=nfilters, kernel_size=kernel_size, padding=padding, nheads=nheads, norm =norm, norm_groups=norm_groups,ftdepth=ftdepth,**kwards)
 
 
-        self.gamma1  = self.params.get('gamma1', shape=(1,), init=mx.init.Zero())
-        self.gamma2  = self.params.get('gamma2', shape=(1,), init=mx.init.Zero())
+        self.gamma1  = gluon.Parameter('gamma1', shape=(1,), init=mx.init.Zero())
+        self.gamma2  = gluon.Parameter('gamma2', shape=(1,), init=mx.init.Zero())
 
 
-    def hybrid_forward(self, F, input_t1, input_t2, gamma1, gamma2):
+    def forward(self, input_t1, input_t2):
         # These inputs must have the same dimensionality , t1, t2 
-        relatt12 = F.broadcast_mul(gamma1,self.relatt12(input_t1,input_t2,input_t2))
-        relatt21 = F.broadcast_mul(gamma2,self.relatt21(input_t2,input_t1,input_t1))
+        relatt12 = self.gamma1.data() * self.relatt12(input_t1,input_t2,input_t2)
+        relatt21 = self.gamma2.data() * self.relatt21(input_t2,input_t1,input_t1)
 
-        ones = F.ones_like(input_t1)
+        ones = FF.ones_like(input_t1)
 
         # Enhanced output of 1, based on memory of 2
-        out12 = F.broadcast_mul(input_t1,ones + relatt12)
+        out12 = input_t1 * (ones + relatt12)
         # Enhanced output of 2, based on memory of 1        
-        out21 = F.broadcast_mul(input_t2,ones + relatt21)
+        out21 = input_t2 * (ones + relatt21)
 
-
-        fuse = self.fuse(F.concat(out12, out21,dim=1))
-        fuse = F.relu(fuse)
+        fuse = self.fuse(FF.concatenate([out12, out21],axis=1))
+        fuse = FFx.relu(fuse)
 
         return fuse
 
@@ -193,26 +197,26 @@ class CATFusion(HybridBlock):
         self.relatt21 = RelFTAttention2D(nkeys=nfilters_in, kernel_size=kernel_size, padding=padding, nheads=nheads, norm =norm, norm_groups=norm_groups,ftdepth=ftdepth,**kwards)
 
 
-        self.gamma1  = self.params.get('gamma1', shape=(1,), init=mx.init.Zero())
-        self.gamma2  = self.params.get('gamma2', shape=(1,), init=mx.init.Zero())
+        self.gamma1  = gluon.Parameter('gamma1', shape=(1,), init=mx.init.Zero())
+        self.gamma2  = gluon.Parameter('gamma2', shape=(1,), init=mx.init.Zero())
 
 
 
-    def hybrid_forward(self, F, input_t1, input_t2, gamma1, gamma2):
+    def forward(self, input_t1, input_t2):
         # These inputs must have the same dimensionality , t1, t2 
-        relatt12 = F.broadcast_mul(gamma1,self.relatt12(input_t1,input_t2,input_t2))
-        relatt21 = F.broadcast_mul(gamma2,self.relatt21(input_t2,input_t1,input_t1))
+        relatt12 = self.gamma1.data() * self.relatt12(input_t1,input_t2,input_t2)
+        relatt21 = self.gamma2.data() * self.relatt21(input_t2,input_t1,input_t1)
 
-        ones = F.ones_like(input_t1)
+        ones = FF.ones_like(input_t1)
 
         # Enhanced output of 1, based on memory of 2
-        out12 = F.broadcast_mul(input_t1,ones + relatt12)
+        out12 = input_t1 * (ones + relatt12)
         # Enhanced output of 2, based on memory of 1        
-        out21 = F.broadcast_mul(input_t2,ones + relatt21)
+        out21 = input_t2 * (ones + relatt21)
 
 
-        fuse = self.fuse(F.concat(out12, out21,dim=1))
-        fuse = F.relu(fuse)
+        fuse = self.fuse(FF.concatenate([out12, out21],axis=1))
+        fuse = FFx.relu(fuse)
 
         return fuse
 
@@ -227,11 +231,12 @@ class combine_layers_wthFusion(HybridBlock):
         self.conv1 = Conv2DNormed(channels=nfilters,kernel_size=3,padding=1, groups=nheads, _norm_type=_norm_type, norm_groups = norm_groups, **kwards)# restore help 
         self.conv3 = Fusion(nfilters=nfilters, kernel_size=3, padding=1, nheads=nheads, norm=_norm_type, norm_groups = norm_groups, ftdepth=ftdepth,**kwards) # process 
 
-    def hybrid_forward(self,F,_layer_lo, _layer_hi):
+    def forward(self,_layer_lo, _layer_hi):
 
-        up = F.contrib.BilinearResize2D(_layer_lo,scale_height=2.,scale_width=2.)
+        up = mx.contrib.nd.BilinearResize2D(_layer_lo.as_nd_ndarray(),scale_height=2.,scale_width=2.)
+        up = up.as_np_ndarray()
         up = self.conv1(up)
-        up = F.relu(up)
+        up = FFx.relu(up)
         x = self.conv3(up,_layer_hi)
 
         return x
@@ -246,17 +251,18 @@ class ExpandNCombine_V3(HybridBlock):
         self.conv2 = Conv2DNormed(channels=nfilters,kernel_size=3,padding=1,groups=ngroups,_norm_type=_norm_type, norm_groups = norm_groups,**kwards)# restore help 
         self.conv3 = Fusion(nfilters=nfilters,kernel_size=3,padding=1,nheads=ngroups,norm=_norm_type, norm_groups = norm_groups,ftdepth=ftdepth,**kwards) # process 
 
-    def hybrid_forward(self, F, input1, input2):
+    def forward(self, input1, input2):
 
-        out = F.contrib.BilinearResize2D(input1,scale_height=2.,scale_width=2.)
+        out = mx.contrib.nd.BilinearResize2D(input1.as_nd_ndarray(),scale_height=2.,scale_width=2.)
+        out = out.as_np_ndarray()
         out = self.conv1(out)
-        out1 = F.relu(out)
+        out1 = FFx.relu(out)
 
         out2 = self.conv2(input2)
-        out2 = F.relu(out2)
+        out2 = FFx.relu(out2)
 
         outf = self.conv3(out1,out2)
-        outf = F.relu(outf)
+        outf = FFx.relu(outf)
 
         return outf
 
@@ -289,54 +295,49 @@ class CEEC_unit_v2(HybridBlock):
         self.ratt211 = RelFTAttention2D(nkeys=nfilters_init, nheads=nheads,norm=norm_type, norm_groups = norm_groups, ftdepth=ftdepth)
 
 
-        self.gamma1  = self.params.get('gamma1', shape=(1,), init=mx.init.Zero())
-        self.gamma2  = self.params.get('gamma2', shape=(1,), init=mx.init.Zero())
-        self.gamma3  = self.params.get('gamma3', shape=(1,), init=mx.init.Zero())
+        self.gamma1  = gluon.Parameter('gamma1', shape=(1,), init=mx.init.Zero())
+        self.gamma2  = gluon.Parameter('gamma2', shape=(1,), init=mx.init.Zero())
+        self.gamma3  = gluon.Parameter('gamma3', shape=(1,), init=mx.init.Zero())
 
-    def hybrid_forward(self, F, input, gamma1, gamma2, gamma3):
+    def forward(self, input):
 
         # =========== UNet branch ===========
         out10 = self.conv_init_1(input)
         out1 = self.compr11(out10)
-        out1 = F.relu(out1)
+        out1 = FFx.relu(out1)
         #print (out1.shape)
         out1 = self.compr12(out1)
-        out1 = F.relu(out1)
+        out1 = FFx.relu(out1)
         #print (out1.shape)
         out1 = self.expand1(out1,out10)
-        out1 = F.relu(out1)
+        out1 = FFx.relu(out1)
 
 
         # =========== \capNet branch ===========
-        input = F.identity(input) # Solves a mxnet bug
-
         out20 = self.conv_init_2(input)
         out2 = self.expand2(out20)
-        out2 = F.relu(out2)
+        out2 = FFx.relu(out2)
         out2 = self.compr21(out2)
-        out2 = F.relu(out2)
+        out2 = FFx.relu(out2)
         out2 = self.compr22(out2,out20) 
 
 
+        att  = self.gamma1.data() * self.att(input)
+        ratt122 = self.gamma2.data() * self.ratt122(out1,out2,out2)
+        ratt211 = self.gamma3.data() * self.ratt211(out2,out1,out1)
 
-        input = F.identity(input) # Solves a mxnet bug
-
-        att  = F.broadcast_mul(gamma1,self.att(input))
-        ratt122 = F.broadcast_mul(gamma2,self.ratt122(out1,out2,out2))
-        ratt211 = F.broadcast_mul(gamma3,self.ratt211(out2,out1,out1))
-
-        ones1 = F.ones_like(out10)
-        ones2 = F.ones_like(input)
+        ones1 = FF.ones_like(out10)
+        ones2 = FF.ones_like(input)
 
         # Enhanced output of 1, based on memory of 2
-        out122 = F.broadcast_mul(out1,ones1 + ratt122)
+        out122 = out1 * (ones1 + ratt122)
         # Enhanced output of 2, based on memory of 1        
-        out211 = F.broadcast_mul(out2,ones1 + ratt211)
+        out211 = out2 * (ones1 + ratt211)
 
 
         out12 = self.collect(out122,out211) # includes relu, it's for fusion
 
-        out_res = F.broadcast_mul(input + out12, ones2 + att)
+        out_res = (input + out12) * (ones2 + att)
         return out_res
 
 

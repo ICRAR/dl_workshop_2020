@@ -2,6 +2,9 @@ import mxnet as mx
 from mxnet import gluon
 from mxnet.gluon import HybridBlock
 
+from mxnet import np as FF
+from mxnet import npx as FFx
+
 class DenseNormed(HybridBlock):
     def __init__(self, units,  flatten=True,dtype='float32', weight_initializer=None, in_units=0, **kwargs):
         super().__init__(**kwargs)
@@ -12,7 +15,7 @@ class DenseNormed(HybridBlock):
         self.norm = gluon.nn.BatchNorm()
 
 
-    def hybrid_forward(self, F, input):
+    def forward(self,  input):
         out = self.dense(input)
         out = self.norm(out)
         return out 

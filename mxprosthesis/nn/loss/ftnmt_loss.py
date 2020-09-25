@@ -2,7 +2,11 @@
 Fractal Tanimoto (with dual) loss 
 """
 
-from mxnet.gluon.loss import Loss                                                                                                                                       
+from mxnet.gluon.loss import Loss                                                                                                                          
+
+from mxnet import np as FF
+from mxnet import npx as FFx
+
 class ftnmt_loss(Loss):
     """
     This function calculates the average fractal tanimoto similarity for d = 0...depth
@@ -23,17 +27,17 @@ class ftnmt_loss(Loss):
             self.depth = depth
             self.scale = 1./depth
 
-    def inner_prod(self, F, prob, label):
-        prod = F.broadcast_mul(prob,label)
-        prod = F.sum(prod,axis=self.axis)
+    def inner_prod(self, prob, label):
+        prod = prob*label
+        prod = FF.sum(prod,axis=self.axis)
 
         return prod
 
-    def tnmt_base(self, F, preds, labels):
+    def tnmt_base(self, preds, labels):
 
-        tpl  = self.inner_prod(F,preds,labels)
-        tpp  = self.inner_prod(F,preds,preds)
-        tll  = self.inner_prod(F,labels,labels)
+        tpl  = self.inner_prod(preds,labels)
+        tpp  = self.inner_prod(preds,preds)
+        tll  = self.inner_prod(labels,labels)
         
        
         num = tpl + self.smooth
@@ -43,16 +47,15 @@ class ftnmt_loss(Loss):
             a = 2.**d
             b = -(2.*a-1.)
 
-            denum = denum + F.reciprocal(F.broadcast_add(a*(tpp+tll), b *tpl) + self.smooth)
+            denum = denum + FF.reciprocal( a*(tpp+tll) + b *tpl + self.smooth)
 
-        result =  F.broadcast_mul(num,denum)*scale       
-        return  F.mean(result, axis=0,exclude=True)
-
+        result =  num * denum * scale       
+        return  result 
                                                                                                                            
-    def hybrid_forward(self,F, preds, labels):
+    def forward(self, preds, labels):
 
-        l1 = self.tnmt_base(F,preds,labels)
-        l2 = self.tnmt_base(F,1.-preds, 1.-labels)
+        l1 = self.tnmt_base(preds,labels)
+        l2 = self.tnmt_base(1.-preds, 1.-labels)
          
         result = 0.5*(l1+l2) 
          

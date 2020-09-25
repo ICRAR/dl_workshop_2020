@@ -4,6 +4,8 @@ from mxnet.gluon import HybridBlock
 from mxprosthesis.nn.layers.scale import *
 from mxprosthesis.nn.layers.conv2Dnormed import *
 
+from mxnet import np as FF
+from mxnet import npx as FFx
 
 """
 For combining layers with Fusion (i.e. relative attention), see ../units/mxprosthesis.py
@@ -27,11 +29,11 @@ class combine_layers(HybridBlock):
         
             
         
-    def hybrid_forward(self,F,_layer_lo, _layer_hi):
+    def forward(self,_layer_lo, _layer_hi):
         
         up = self.up(_layer_lo)
-        up = F.relu(up)
-        x = F.concat(up,_layer_hi, dim=1)
+        up = FFx.relu(up)
+        x = FF.concatenate([up,_layer_hi], axis=1)
         x = self.conv_normed(x)
         
         return x

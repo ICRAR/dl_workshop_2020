@@ -6,6 +6,9 @@ from mxprosthesis.nn.activations.sigmoid_crisp import *
 from mxprosthesis.nn.pooling.psp_pooling import *
 from mxprosthesis.nn.layers.conv2Dnormed import *
 
+from mxnet import np as FF
+from mxnet import npx as FFx
+
 # Helper classification head, for a single layer output 
 class HeadSingle(HybridBlock):
     def __init__(self, nfilters,  NClasses, depth=2, norm_type='BatchNorm',norm_groups=None, **kwargs):
@@ -18,20 +21,20 @@ class HeadSingle(HybridBlock):
             self.logits.add( gluon.nn.Activation('relu'))
             self.logits.add( gluon.nn.Conv2D(NClasses,kernel_size=1,padding=0))
 
-    def hybrid_forward(self,F,input):
+    def forward(self,input):
         return self.logits(input)
 
 
 
 class Head_CMTSK_BC(HybridBlock):
     # BC: Balanced (features) Crisp (boundaries) 
-    def __init__(self, _nfilters_init,  _NClasses,  norm_type = 'BatchNorm', norm_groups=None, **kwards):
+    def __init__(self, nfilters,  NClasses,  norm_type = 'BatchNorm', norm_groups=None, **kwards):
         super().__init__()
         
         self.model_name = "Head_CMTSK_BC" 
 
-        self.nfilters = _nfilters_init # Initial number of filters 
-        self.NClasses = _NClasses
+        self.nfilters = nfilters # Initial number of filters 
+        self.NClasses = NClasses
         self.psp_2ndlast = PSP_Pooling(self.nfilters, _norm_type = norm_type, norm_groups=norm_groups)
             
         # bound logits 
@@ -57,35 +60,36 @@ class Head_CMTSK_BC(HybridBlock):
         if ( self.NClasses == 1):
             self.ChannelAct = SigmoidCrisp() 
         else:
-            self.ChannelAct = gluon.nn.HybridLambda(lambda F,x: F.softmax(x,axis=1))
+            #TODO add scaled softmax as well
+            self.ChannelAct = gluon.nn.HybridLambda(lambda F,x: FFx.softmax(x,axis=1))
 
-    def hybrid_forward(self,F, UpConv4, conv1):
+    def forward(self, UpConv4, conv1):
         # second last layer 
-        convl = F.concat(conv1,UpConv4)
+        convl = FF.concatenate([conv1,UpConv4],axis=1)
         conv = self.psp_2ndlast(convl)
-        conv = F.relu(conv)
+        conv = FFx.relu(conv)
 
         # logits 
 
         # 1st find distance map, skeleton like, topology info
         dist = self.distance_logits(convl) # do not use max pooling for distance
         dist = self.ChannelAct(dist)
-        distEq = F.relu(self.dist_Equalizer(dist)) # makes nfilters equals to conv and convl  
+        distEq = FFx.relu(self.dist_Equalizer(dist)) # makes nfilters equals to conv and convl  
 
 
         # Then find boundaries 
-        bound = F.concat(conv, distEq)
+        bound = FF.concatenate([conv, distEq],axis=1)
         bound = self.bound_logits(bound)
         bound   = self.CrispSigm(bound) # Boundaries are not mutually exclusive 
-        boundEq = F.relu(self.bound_Equalizer(bound))
+        boundEq = FFx.relu(self.bound_Equalizer(bound))
 
 
         # Now combine all predictions in a final segmentation mask 
         # Balance first boundary and distance transform, with the features
-        comb_bd = self.Comb_bound_dist(F.concat(boundEq, distEq,dim=1))
-        comb_bd = F.relu(comb_bd)
+        comb_bd = self.Comb_bound_dist(FF.concatenate([boundEq, distEq],axis=1))
+        comb_bd = FFx.relu(comb_bd)
 
-        all_layers = F.concat(comb_bd, conv)
+        all_layers = FF.concatenate([comb_bd, conv],axis=1)
         final_segm = self.final_segm_logits(all_layers)
         final_segm = self.ChannelAct(final_segm)
 

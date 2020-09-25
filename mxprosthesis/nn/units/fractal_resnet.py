@@ -4,6 +4,9 @@ from mxprosthesis.nn.layers.conv2Dnormed import *
 from mxprosthesis.utils.get_norm import *
 from mxprosthesis.nn.layers.attention import *
 
+from mxnet import np as FF
+from mxnet import npx as FFx
+
 class ResNet_v2_block(HybridBlock):
     """
     ResNet v2 building block. It is built upon the assumption of ODD kernel 
@@ -28,14 +31,14 @@ class ResNet_v2_block(HybridBlock):
         self.conv2 = gluon.nn.Conv2D(self.nfilters,kernel_size = self.kernel_size,padding=p,dilation=self.dilation_rate,use_bias=True, groups=ngroups)
 
 
-    def hybrid_forward(self,F,_input_layer):
+    def forward(self,_input_layer):
  
         x = self.BN1(_input_layer)
-        x = F.relu(x)
+        x = FFx.relu(x)
         x = self.conv1(x)
 
         x = self.BN2(x)
-        x = F.relu(x)
+        x = FFx.relu(x)
         x = self.conv2(x)
 
         return x 
@@ -48,15 +51,15 @@ class FracTALResNet_unit(HybridBlock):
         self.block1 = ResNet_v2_block(nfilters,kernel_size,dilation_rate,_norm_type = norm_type, norm_groups=norm_groups, ngroups=ngroups)
         self.attn = FTAttention2D(nkeys=nfilters, nheads=nheads, kernel_size=kernel_size, norm = norm_type, norm_groups = norm_groups,ftdepth=ftdepth)
 
-        self.gamma  = self.params.get('gamma', shape=(1,), init=mx.init.Zero())
+        self.gamma  = gluon.Parameter('gamma', shape=(1,), init=mx.init.Zero())
 
-    def hybrid_forward(self, F, input, gamma):
+    def forward(self, input):
         out1 = self.block1(input)
 
         att2 = self.attn(input)
-        att2 = F.broadcast_mul(gamma2,att2)
+        att2 = self.gamma.data() * att2
         
-        out  = F.broadcast_mul((input + out1) , F.ones_like(out1) + att2) 
+        out  = (input + out1) * (FF.ones_like(out1) + att2) 
         return out 
 
 
@@ -68,18 +71,27 @@ class FracTALResNet_unit_v2(HybridBlock):
         self.attn1 = FTAttention2D(nkeys=nfilters, nheads=nheads, kernel_size=kernel_size, norm = norm_type, norm_groups = norm_groups,ftdepth=ftdepth)
         self.attn2 = FTAttention2D(nkeys=nfilters, nheads=nheads, kernel_size=kernel_size, norm = norm_type, norm_groups = norm_groups,ftdepth=ftdepth)
 
-        self.gamma1  = self.params.get('gamma1', shape=(1,), init=mx.init.Zero())
-        self.gamma2  = self.params.get('gamma2', shape=(1,), init=mx.init.Zero())
+        self.gamma1  = gluon.Parameter('gamma1', shape=(1,), init=mx.init.Zero())
+        self.gamma2  = gluon.Parameter('gamma2', shape=(1,), init=mx.init.Zero())
 
-    def hybrid_forward(self, F, input, gamma1,gamma2):
+    def forward(self, input):
+
         out1 = self.block1(input)
         att1 = self.attn1(out1)
-        att1 = F.broadcast_mul(gamma1,att1)
-        out1  = F.broadcast_mul(out1 , F.ones_like(out1) + att1) 
-
+        att1 = self.gamma1.data() * att1
+        out1 = out1 * (FF.ones_like(out1) + att1) 
 
         att2 = self.attn2(input)
-        att2 = F.broadcast_mul(gamma2,att2)
+        att2 = self.gamma2.data() * att2 
         
-        out  = F.broadcast_mul((input + out1) , F.ones_like(out1) + att2) 
+        out  = (input + out1) * (FF.ones_like(out1) + att2) 
         return out 
+
+
+
+
+
+
+
+
+

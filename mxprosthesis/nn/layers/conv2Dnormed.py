@@ -4,6 +4,9 @@ from mxnet.gluon import HybridBlock
 from mxprosthesis.utils.get_norm import * 
 
 
+from mxnet import np as FF
+from mxnet import npx as FFx
+
 class Conv2DNormed(HybridBlock):
     """
         Convenience wrapper layer for 2D convolution followed by a normalization layer 
@@ -27,9 +30,9 @@ class Conv2DNormed(HybridBlock):
 
         self.norm_layer = get_norm(_norm_type, axis=axis, norm_groups= norm_groups)
 
-    def hybrid_forward(self,F,_x):
+    def forward(self,input):
 
-        x = self.conv2d(_x)
+        x = self.conv2d(input)
         x = self.norm_layer(x)
 
         return x

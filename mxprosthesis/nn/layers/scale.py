@@ -4,6 +4,10 @@ from mxnet.gluon import HybridBlock
 from mxprosthesis.nn.layers.conv2Dnormed import * 
 from mxprosthesis.utils.get_norm import * 
 
+import mxnet as mx 
+from mxnet import np as FF
+from mxnet import npx as FFx
+
 class DownSample(HybridBlock):
     def __init__(self, nfilters, factor=2,  _norm_type='BatchNorm', norm_groups=None, **kwargs): 
         super().__init__(**kwargs)
@@ -25,9 +29,9 @@ class DownSample(HybridBlock):
                     norm_groups=norm_groups)
  
     
-    def hybrid_forward(self,F,_xl):
+    def forward(self,input):
         
-        x = self.convdn(_xl)
+        x = self.convdn(input)
 
         return x 
 
@@ -45,8 +49,9 @@ class UpSample(HybridBlock):
                                               _norm_type = _norm_type, 
                                               norm_groups=norm_groups)
     
-    def hybrid_forward(self,F,_xl):
-        x = F.UpSampling(_xl, scale=self.factor, sample_type='nearest')
+    def forward(self,_xl):
+        x = mx.nd.UpSampling(_xl.as_nd_ndarray(), scale=self.factor, sample_type='nearest')
+        x = x.as_np_ndarray()
         x = self.convup_normed(x)
         
         return x
