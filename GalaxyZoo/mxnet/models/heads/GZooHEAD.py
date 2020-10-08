@@ -12,9 +12,9 @@ class GZooHEADLayer(HybridBlock):
         self.d2 = gluon.nn.Dense(units=out_features)
 
 
-    def hybrid_forward(self,F,input):
+    def forward(self,input):
         out = self.d1(input)
-        out = F.relu(out)
+        out = mx.npx.relu(out)
         out = self.d2(out)
 
         return out
@@ -58,72 +58,72 @@ class GZooHEAD(HybridBlock):
         self.q11 = GZooHEADLayer(mid_features=in_features, out_features=6) # sigmoid
         self.q11bal  = gluon.nn.Dense(units=in_features) # softmax
 
-    def hybrid_forward(self,F, input):
+    def forward(self, input):
 
 
         q1 = self.q1(input)
-        q1 = F.softmax(q1,axis=-1)
+        q1 = mx.npx.softmax(q1,axis=-1)
         q1bal = self.q1bal(q1)
 
-        q2in = F.concat(*[q1bal,input],dim=-1)
+        q2in = mx.np.concatenate([q1bal,input],axis=-1)
         q2 = self.q2 (q2in)
-        q2 = F.sigmoid(q2)
+        q2 = mx.npx.sigmoid(q2)
         q2bal = self.q2bal(q2)
-        q2bal = F.relu(q2bal)
+        q2bal = mx.npx.relu(q2bal)
 
-        q3in = F.concat(*[input,q2bal],dim=-1)
+        q3in = mx.np.concatenate([input,q2bal],axis=-1)
         q3 = self.q3(q3in)
-        q3 = F.sigmoid(q3)
+        q3 = mx.npx.sigmoid(q3)
         q3bal = self.q3bal(q3)
-        q3bal = F.relu(q3bal)
+        q3bal = mx.npx.relu(q3bal)
 
-        q4in = F.concat(*[input,q3bal],dim=-1)
+        q4in = mx.np.concatenate([input,q3bal],axis=-1)
         q4 = self.q4(q4in)
-        q4 = F.sigmoid(q4)
+        q4 = mx.npx.sigmoid(q4)
         q4bal = self.q4bal(q4)
-        q4bal = F.relu(q4bal)
+        q4bal = mx.npx.relu(q4bal)
 
 
-        q10in = F.concat(*[input,q4bal],dim=-1)
+        q10in = mx.np.concatenate([input,q4bal],axis=-1)
         q10 = self.q10(q10in)
-        q10 = F.sigmoid(q10)
+        q10 = mx.npx.sigmoid(q10)
         q10bal = self.q10bal(q10)
-        q10bal = F.relu(q10bal)
+        q10bal = mx.npx.relu(q10bal)
 
-        q11in = F.concat(*[input,q10bal],dim=-1)
+        q11in = mx.np.concatenate([input,q10bal],axis=-1)
         q11 = self.q11(q11in)
-        q11 = F.sigmoid(q11)
+        q11 = mx.npx.sigmoid(q11)
         q11bal = self.q11bal(q11)
-        q11bal = F.relu(q11bal)
+        q11bal = mx.npx.relu(q11bal)
 
-        q5in = F.concat(*[input,q4bal,q11bal],dim=-1)
+        q5in = mx.np.concatenate([input,q4bal,q11bal],axis=-1)
         q5 = self.q5(q5in)
-        q5 = F.sigmoid(q5)
+        q5 = mx.npx.sigmoid(q5)
 
-        q7in = F.concat(*[input,q1bal],dim=-1)
+        q7in = mx.np.concatenate([input,q1bal],axis=-1)
         q7 = self.q7(q7in)
-        q7 = F.sigmoid(q7)
+        q7 = mx.npx.sigmoid(q7)
         q7bal = self.q7bal(q7)
-        q7bal = F.relu(q7bal)
+        q7bal = mx.npx.relu(q7bal)
 
-        q9in = F.concat(*[input,q2bal],dim=-1)
+        q9in = mx.np.concatenate([input,q2bal],axis=-1)
         q9 = self.q9(q9in)
-        q9 = F.sigmoid(q9)
+        q9 = mx.npx.sigmoid(q9)
         q9bal = self.q9bal(q9)
-        q9bal = F.relu(q9bal)
+        q9bal = mx.npx.relu(q9bal)
 
 
-        q6in = F.concat(*[input,q7bal,q9bal],dim=-1)
+        q6in = mx.np.concatenate([input,q7bal,q9bal],axis=-1)
         q6 = self.q6(q6in)
-        q6 = F.sigmoid(q6)
+        q6 = mx.npx.sigmoid(q6)
         q6bal = self.q6bal(q6)
-        q6bal = F.relu(q6bal)
+        q6bal = mx.npx.relu(q6bal)
 
 
-        q8in = F.concat(*[input,q6bal],dim=-1)
+        q8in = mx.np.concatenate([input,q6bal],axis=-1)
         q8 = self.q8(q8in)
-        q8 = F.sigmoid(q8)
+        q8 = mx.npx.sigmoid(q8)
 
 
-        qall = F.concat(*[q1,q2,q3,q4,q5,q6,q7,q8,q9,q10,q11],dim=-1)
+        qall = mx.np.concatenate([q1,q2,q3,q4,q5,q6,q7,q8,q9,q10,q11],axis=-1)
         return qall

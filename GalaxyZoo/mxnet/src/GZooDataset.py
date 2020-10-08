@@ -1,10 +1,12 @@
+import mxnet as mx 
+import numpy as np
 from PIL import Image
-from mxnet import gluon, nd
+from mxnet import gluon
 import pandas as pd 
 import os
 
 class GZooData(gluon.data.Dataset):
-    def __init__(self, root = r'/Users/foivos/Documents/kaggle_comps/GalaxyZoo/data/',mode = 'train',  transform=None):
+    def __init__(self, root = r'/home/foivos/Projects/dl_workshop_2020/GalaxyZoo/data/',mode = 'train',  transform=None):
         
         self._transform = transform
                
@@ -28,13 +30,14 @@ class GZooData(gluon.data.Dataset):
     def __getitem__(self, idx):
         
         GID = int(self.df.iloc[idx]['GalaxyID'])
-        probs = self.df.iloc[idx,1:].to_numpy()
-        probs = nd.array(probs)
+        probs = self.df.iloc[idx,1:].to_numpy().astype(np.float32)
+        probs = mx.np.array(probs)
         
         path_read = os.path.join(self.root_imgs , str(GID)+r'.jpg')
         
         img = Image.open(path_read)
-        img = nd.array(img)
+        timg = np.array(img)
+        img = mx.np.array(timg)
         
         if self._transform is not None:
             img = self._transform(img)
