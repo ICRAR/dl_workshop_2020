@@ -8,7 +8,7 @@ mx.npx.set_np()
 parser = argparse.ArgumentParser(description='MXNet Gluon GZoo training')
 parser.add_argument('--root', type=str, default=r'/home/foivos/Projects/dl_workshop_2020/',
                     help='root directory that contains GalaxyZoo code and data')
-parser.add_argument('--batch-size', type=int, default=4,
+parser.add_argument('--batch-size', type=int, default=6,
                     help='batch size for training and testing (default:32)')
 parser.add_argument('--crop-size', type=int, default=256, # this is not the best solution, but ...
                     help='crop size of input image, for memory efficiency(default:256)')
@@ -71,7 +71,7 @@ net.hybridize()  # ZoomZoom!!
 # Data augmentation definitions 
 transform_train = transforms.Compose([
     # Randomly crop an area, and then resize it to be 32x32
-    transforms.RandomResizedCrop(opt.crop_size,scale=(0.6,1.)),
+    transforms.RandomResizedCrop(opt.crop_size,scale=(0.2,1.)),# test also with 0.6
     # Randomly flip the image horizontally/vertically
     transforms.RandomFlipLeftRight(),
     transforms.RandomFlipTopBottom(),
@@ -93,7 +93,7 @@ transform_test = transforms.Compose([
 # Datasets/DataLoaders 
 from GalaxyZoo.mxnet.src.GZooDataset import *
 dataset_train = GZooData(root=os.path.join(opt.root,'GalaxyZoo'), transform=transform_train)
-datagen_train = gluon.data.DataLoader(dataset_train,batch_size=opt.batch_size,shuffle=True)
+datagen_train = gluon.data.DataLoader(dataset_train,batch_size=opt.batch_size,shuffle=True,last_batch='rollover')
 
 dataset_dev = GZooData(root=os.path.join(opt.root,'GalaxyZoo'), mode='dev',transform=transform_test)
 datagen_dev = gluon.data.DataLoader(dataset_dev,batch_size=opt.batch_size,shuffle=False,last_batch='rollover')
@@ -185,7 +185,7 @@ def train(epochs,ctx,flname_write):
             if val_mse < ref_metric:
                 # Save best model parameters, according to minimum val_mse
                 net.save_parameters(flname_save_weights)
-                ref_metric = val_mse.copy()
+                ref_metric = val_mse
 
 
 

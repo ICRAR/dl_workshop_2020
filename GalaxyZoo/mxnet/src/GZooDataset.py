@@ -45,5 +45,6 @@ class GZooData(gluon.data.Dataset):
         return img, probs
     
     def __len__(self):
+        #return 128 # debugging
         return len(self.df)
 
