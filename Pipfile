@@ -8,12 +8,13 @@ verify_ssl = true
 [packages]
 jupyter = "*"
 pysnooper = "*"
-tf-nightly-gpu = "*"
+tensorflow = "*"
 matplotlib = "*"
 pandas = "*"
 jupyter-nbextensions-configurator = "*"
 seaborn = "*"
 jupyterthemes = "*"
+sklearn = "*"
 
 [requires]
 python_version = "3.8"
