@@ -40,6 +40,7 @@ class GZooHEAD(HybridBlock):
         self.q4bal  = gluon.nn.Dense(units=in_features) # softmax
 
         self.q5  = GZooHEADLayer(mid_features=in_features, out_features=4) # sigmoid
+        self.q5bal  = gluon.nn.Dense (units=in_features) # softmax # This was a bug, being DenseNormed in the runs that exist 
 
         self.q6  = GZooHEADLayer(mid_features=in_features, out_features=2) # sigmoid
         self.q6bal  = gluon.nn.Dense(units=in_features) # softmax
@@ -99,6 +100,9 @@ class GZooHEAD(HybridBlock):
         q5in = mx.np.concatenate([input,q4bal,q11bal],axis=-1)
         q5 = self.q5(q5in)
         q5 = mx.npx.sigmoid(q5)
+        # ---
+        q5bal = self.q5bal(q5)
+        q5bal = mx.npx.relu(q5bal)
 
         q7in = mx.np.concatenate([input,q1bal],axis=-1)
         q7 = self.q7(q7in)
@@ -113,7 +117,7 @@ class GZooHEAD(HybridBlock):
         q9bal = mx.npx.relu(q9bal)
 
 
-        q6in = mx.np.concatenate([input,q7bal,q9bal],axis=-1)
+        q6in = mx.np.concatenate([input,q7bal,q9bal,q5bal],axis=-1)
         q6 = self.q6(q6in)
         q6 = mx.npx.sigmoid(q6)
         q6bal = self.q6bal(q6)

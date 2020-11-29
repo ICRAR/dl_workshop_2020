@@ -5,11 +5,13 @@ import time, os, math, argparse
 
 mx.npx.set_np()
 
+
 parser = argparse.ArgumentParser(description='MXNet Gluon GZoo training')
-parser.add_argument('--root', type=str, default=r'/home/foivos/Projects/dl_workshop_2020/',
+#parser.add_argument('--root', type=str, default=r'/home/foivos/Projects/dl_workshop_2020/GalaxyZoo',
+parser.add_argument('--root', type=str, default=r'/home/foivos/Projects/',
                     help='root directory that contains GalaxyZoo code and data')
-parser.add_argument('--batch-size', type=int, default=6,
-                    help='batch size for training and testing (default:32)')
+parser.add_argument('--batch-size', type=int, default=2, #64,
+                    help='batch size for training and testing (default:64)')
 parser.add_argument('--crop-size', type=int, default=256, # this is not the best solution, but ...
                     help='crop size of input image, for memory efficiency(default:256)')
 parser.add_argument('--epochs', type=int, default=600,
@@ -24,14 +26,20 @@ parser.add_argument('--model',type=str, default='FracTALResNet',
                     help='Model base for feature extraction, default::FracTALResNet')
 parser.add_argument('--depth',type=int, default=3,
                     help='XX depth, default::3')
+parser.add_argument('--ftdepth',type=int, default=0,
+                    help='ftnmt depth, default::5')
 parser.add_argument('--widths',type=list, default=[2],
                     help='XX widths, default::2')
 parser.add_argument('--nheads_start',type=int, default=32//8,
                     help='XX nheads_start, default::{}'.format(32//8))
 parser.add_argument('--in_features',type=int, default=1024,
                     help='XX in_features, default::{}'.format(1024))
+parser.add_argument('--name-load-params',type=str, default=None,
+                    help='name-load-params, for restart, default=None')
 parser.add_argument('--causal',type=bool, default=True,
                     help='Model predictions HEAD, causal vs standard, default:: causal=True')
+parser.add_argument('--causality-model',type=str, default='v1',
+                    help='Model predictions HEAD, causality model, v2 vs v3, default:: causal=v3')
 
 
 opt = parser.parse_args()
@@ -44,7 +52,7 @@ sys.path.append(opt.root)
 from mxnet.gluon.data.vision import transforms
 
 # Model definitions 
-from GalaxyZoo.mxnet.models.xxnets import * 
+from GalaxyZoo.models.xxnets import * 
 
 if opt.causal:
     tname = r'causal'
@@ -63,23 +71,33 @@ else:
     ctx = [mx.cpu()]
 
 # Define model
-net = xxnets(nfilters_init = opt.nfilters_init, depth=opt.depth, widths=opt.widths, nheads_start = opt.nheads_start, model_name = opt.model, causal = opt.causal, psp_depth=2)
-net.initialize(ctx=ctx)
-net.hybridize()  # ZoomZoom!! 
+net = xxnets(nfilters_init = opt.nfilters_init, depth=opt.depth, widths=opt.widths, nheads_start = opt.nheads_start, model_name = opt.model, causal = opt.causal, psp_depth=4,causality_model=opt.causality_model,ftdepth=opt.ftdepth)
+import re
+if opt.name_load_params is not None:
+    net.load_parameters(opt.name_load_params,ctx=ctx)
+    epoch_start = int(re.sub(r'^(.*)(epoch-)','',opt.name_load_params).replace('.params','') )
+    epoch_start = epoch_start + 1 # Start from + 1 to avoid overwriting weights. 
+else:
+    net.initialize(ctx=ctx)
+    epoch_start=0
+
+net.hybridize(static_alloc=True, static_shape=True)  # ZoomZoom!! 
 
 
 # Data augmentation definitions 
 transform_train = transforms.Compose([
     # Randomly crop an area, and then resize it to be 32x32
-    transforms.RandomResizedCrop(opt.crop_size,scale=(0.2,1.)),# test also with 0.6
+    transforms.RandomResizedCrop(opt.crop_size,scale=(0.6,1.)),# test also with 0.6
     # Randomly flip the image horizontally/vertically
     transforms.RandomFlipLeftRight(),
     transforms.RandomFlipTopBottom(),
     # Randomly jitter the brightness, contrast and saturation of the image
-    transforms.RandomColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
+    transforms.RandomColorJitter(brightness=0.9, contrast=0.9, saturation=0.9), #NEW hue
     # Transpose the image from height*width*num_channels to num_channels*height*width
     # and map values from [0, 255] to [0,1]
+    #transforms.RandomGray(p=0.35), # Random gray scale NEW
     transforms.ToTensor(),
+    transforms.RandomRotation(angle_limits=(-90,90),zoom_in=True), # Random rotation 
     # Normalize the image with mean and standard deviation calculated across all images
     transforms.Normalize([11.663384, 10.260227,  7.65015 ], [21.421959, 18.044296, 15.494861])
 ])
@@ -91,12 +109,12 @@ transform_test = transforms.Compose([
 ])
 
 # Datasets/DataLoaders 
-from GalaxyZoo.mxnet.src.GZooDataset import *
+from GalaxyZoo.src.GZooDataset import *
 dataset_train = GZooData(root=os.path.join(opt.root,'GalaxyZoo'), transform=transform_train)
-datagen_train = gluon.data.DataLoader(dataset_train,batch_size=opt.batch_size,shuffle=True,last_batch='rollover')
+datagen_train = gluon.data.DataLoader(dataset_train,batch_size=opt.batch_size,shuffle=True,last_batch='rollover',pin_memory=True,num_workers=16)
 
 dataset_dev = GZooData(root=os.path.join(opt.root,'GalaxyZoo'), mode='dev',transform=transform_test)
-datagen_dev = gluon.data.DataLoader(dataset_dev,batch_size=opt.batch_size,shuffle=False,last_batch='rollover')
+datagen_dev = gluon.data.DataLoader(dataset_dev,batch_size=opt.batch_size,shuffle=False,last_batch='rollover',pin_memory=True,num_workers=16)
 
 
 # Adam parameters                                                                                  
@@ -117,19 +135,21 @@ trainer = gluon.Trainer(net.collect_params(), optimizer, optimizer_params)
 
 
 train_metric = gluon.metric.MSE()
-loss_fn  = gluon.loss.L1Loss() 
+from mxprosthesis.nn.loss.ftnmt_loss import *
+#loss_fn  = gluon.loss.L1Loss() 
+loss_fn = ftnmt_loss(depth=opt.ftdepth,axis=-1)
+loss_fn.hybridize()
 
 # development metric: 
 def test(tctx, tnet, tdatagen_dev):
     metric = gluon.metric.MSE()
-    print ("started testing ...")
+    print ("\nstarted testing ...")
     for idx, data in enumerate(tdatagen_dev):
         print("\rRunning:: {}/{}".format(idx+1,len(tdatagen_dev)),end='',flush=True)
         #data = gluon.utils.split_and_load(batch[0], ctx_list=ctx, batch_axis=0)
         imgs, labels = data
-        #imgs = imgs.as_in_context(tctx)
         imgs = gluon.utils.split_and_load(imgs, ctx_list=ctx, batch_axis=0)
-        #outputs = nd.concatenate(outputs,axis=0)
+        #labels = gluon.utils.split_and_load(labels, ctx_list=ctx, batch_axis=0)
         with mx.autograd.predict_mode():
             preds = [tnet(timgs).as_in_context(mx.cpu()) for timgs in imgs]
         preds = mx.np.concatenate(preds,axis=0)
@@ -163,9 +183,8 @@ def train(epochs,ctx,flname_write):
                     # necessary to avoid memory flooding 
                     mx.npx.waitall() 
                     # Backpropagation
-                    for l in losses:
-                        l.backward()
-
+                    for l1 in losses:
+                        l1.backward()
 
                 # Optimize
                 trainer.step(opt.batch_size) # This is the batch_size
@@ -185,6 +204,8 @@ def train(epochs,ctx,flname_write):
             print("\n")
             print('epoch={} train_mse={} val_mse={} train_loss={} time={}'.format(epoch, train_mse, val_mse, train_loss, time.time()-tic))
             print(epoch, train_mse, val_mse, train_loss, file=f,flush=True)
+            
+            net.save_parameters(flname_save_weights.replace('best_model','epoch-{}'.format(epoch)))
             if val_mse < ref_metric:
                 # Save best model parameters, according to minimum val_mse
                 net.save_parameters(flname_save_weights)
