@@ -1,2 +1,0 @@
-epoch train_mse val_mse train_loss
-0.2324432 2324234 2323.2323 3444.31
